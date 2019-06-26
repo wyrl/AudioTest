@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_horizontal"
+        android:text="Equalizer"
+        android:textSize="25dp"
+        android:layout_marginBottom="25dp"
+        android:textStyle="bold"/>
+    <Switch android:id="@+id/switchEnable"
+        android:layout_width="100dp"
+        android:layout_height="wrap_content"
+        android:text="Enable"
+        android:layout_marginBottom="15dp"/>
+    <LinearLayout android:id="@+id/equalizerLayout"
+        android:visibility="gone"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+        <Spinner android:id="@+id/spinnerPresets"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="15dp">
+        </Spinner>
+    </LinearLayout>
+</LinearLayout>

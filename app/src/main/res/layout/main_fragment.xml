@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
+    <com.chibde.visualizer.LineBarVisualizer
+        android:id="@+id/visualizer"
+        android:layout_width="match_parent"
+        android:layout_height="250dp"/>
+    <LinearLayout
+        android:layout_marginTop="15dp"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+        <CheckBox android:id="@+id/chkLoudness"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Loudness Gain:"
+            android:layout_marginRight="12dp"/>
+        <TextView android:id="@+id/tvLoudness"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="0"/>
+    </LinearLayout>
+
+    <SeekBar android:id="@+id/seekbarLoudness"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:visibility="gone"
+        android:max="5000" />
+    <Button android:id="@+id/btnStartStop"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="30dp"
+        android:text="Start"/>
+</LinearLayout>
