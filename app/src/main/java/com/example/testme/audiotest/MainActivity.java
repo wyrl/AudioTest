@@ -2,8 +2,11 @@ package com.example.testme.audiotest;
 
 
 import android.Manifest;
+import android.bluetooth.BluetoothA2dp;
 import android.bluetooth.BluetoothAdapter;
+import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothHeadset;
+import android.bluetooth.BluetoothProfile;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -20,10 +23,14 @@ import android.support.v7.app.ActionBar;
 import android.support.v13.app.FragmentPagerAdapter;
 import android.support.v4.view.ViewPager;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
 
+import android.widget.TextView;
 import android.widget.Toast;
+
+import java.util.Set;
 
 public class MainActivity extends AppCompatActivity implements ActionBar.TabListener, IAudioAvailableDevice {
 
@@ -45,6 +52,9 @@ public class MainActivity extends AppCompatActivity implements ActionBar.TabList
     int PERMISSION_ALL = 1;
     String[] PERMISSIONS = {Manifest.permission.RECORD_AUDIO};
 
+    BluetoothA2dp bluetoothA2dp;
+    BluetoothDevice device;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -57,15 +67,8 @@ public class MainActivity extends AppCompatActivity implements ActionBar.TabList
         // primary sections of the activity.
         mSectionsPagerAdapter = new SectionsPagerAdapter(getFragmentManager());
 
-        MainFragment mainFragment = new MainFragment();
-        mainFragment.setContext(this);
-        Config.playingAudio = mainFragment;
-        mSectionsPagerAdapter.addFragment(mainFragment);
-
-        EqualizerFragment equalizerFragment = new EqualizerFragment();
-        equalizerFragment.setContext(this);
-        Config.playingEqualizer = equalizerFragment;
-        mSectionsPagerAdapter.addFragment(equalizerFragment);
+        initMainFragment();
+        initEqualizer();
 
         mSectionsPagerAdapter.addFragment(new AudioSettingsFragment());
 
@@ -112,6 +115,39 @@ public class MainActivity extends AppCompatActivity implements ActionBar.TabList
         filter = new IntentFilter(UsbManager.ACTION_USB_DEVICE_DETACHED);
         registerReceiver(usbReciever, filter);
 
+        // Get the default adapter
+        BluetoothAdapter mBluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
+
+
+        Set<BluetoothDevice> devices = mBluetoothAdapter.getBondedDevices();
+        String deviceName = "Rapoo H6020";
+        if (devices != null) {
+            for (BluetoothDevice device : devices) {
+                if (deviceName.equals(device.getName())) {
+                    this.device = device;
+                    Toast.makeText(this, deviceName, Toast.LENGTH_SHORT).show();
+                    break;
+                }
+            }
+        }
+        // Establish connection to the proxy.
+        //mBluetoothAdapter.getProfileProxy(this, mProfileListener, BluetoothProfile.A2DP);
+
+        Intent startServiceIntent = new Intent(MainActivity.this, HearingService.class);
+        startService(startServiceIntent);
+
+    }
+    private void initMainFragment() {
+        MainFragment mainFragment = new MainFragment();
+        mainFragment.setContext(this);
+        Config.playingAudio = mainFragment;
+        mSectionsPagerAdapter.addFragment(mainFragment);
+    }
+    private void initEqualizer(){
+        EqualizerFragment equalizerFragment = new EqualizerFragment();
+        equalizerFragment.setContext(this);
+        Config.playingEqualizer = equalizerFragment;
+        mSectionsPagerAdapter.addFragment(equalizerFragment);
     }
     public static boolean hasPermissions(Context context, String... permissions) {
         if (android.os.Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && context != null && permissions != null) {
@@ -123,14 +159,12 @@ public class MainActivity extends AppCompatActivity implements ActionBar.TabList
         }
         return true;
     }
-
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
         // Inflate the menu; this adds items to the action bar if it is present.
         getMenuInflater().inflate(R.menu.menu_main2, menu);
         return true;
     }
-
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
         // Handle action bar item clicks here. The action bar will
@@ -145,17 +179,14 @@ public class MainActivity extends AppCompatActivity implements ActionBar.TabList
 
         return super.onOptionsItemSelected(item);
     }
-
     @Override
     public void onTabSelected(ActionBar.Tab tab, android.support.v4.app.FragmentTransaction ft) {
         mViewPager.setCurrentItem(tab.getPosition());
     }
-
     @Override
     public void onTabUnselected(ActionBar.Tab tab, android.support.v4.app.FragmentTransaction ft) {
 
     }
-
     @Override
     public void onTabReselected(ActionBar.Tab tab, android.support.v4.app.FragmentTransaction ft) {
 
@@ -181,7 +212,6 @@ public class MainActivity extends AppCompatActivity implements ActionBar.TabList
         }
         return false;
     }
-
     private final BroadcastReceiver bluetoothReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
@@ -195,6 +225,7 @@ public class MainActivity extends AppCompatActivity implements ActionBar.TabList
                     case BluetoothAdapter.STATE_CONNECTED:
                         //isBluetoothAudioConnected = true;
                         Toast.makeText(getApplicationContext(), "Bluetooth Headset Connected", Toast.LENGTH_SHORT).show();
+
                         break;
 
                     case BluetoothAdapter.STATE_DISCONNECTED:
@@ -215,11 +246,24 @@ public class MainActivity extends AppCompatActivity implements ActionBar.TabList
                         break;
                 }
             }
+        }
+    };
+    private BluetoothProfile.ServiceListener mProfileListener = new BluetoothProfile.ServiceListener() {
+        @Override
+        public void onServiceConnected(int i, BluetoothProfile bluetoothProfile) {
+            Log.d("BluetoothService", "a2dp service connected. profile = " + i);
+
+            if(i == BluetoothProfile.A2DP){
+                bluetoothA2dp = (BluetoothA2dp) bluetoothProfile;
+                Toast.makeText(MainActivity.this, "A2dp", Toast.LENGTH_SHORT).show();
+            }
+        }
+
+        @Override
+        public void onServiceDisconnected(int i) {
 
         }
     };
-
-
     private final BroadcastReceiver usbReciever = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
@@ -236,4 +280,10 @@ public class MainActivity extends AppCompatActivity implements ActionBar.TabList
             }
         }
     };
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        Intent startServiceIntent = new Intent(MainActivity.this, HearingService.class);
+        stopService(startServiceIntent);
+    }
 }

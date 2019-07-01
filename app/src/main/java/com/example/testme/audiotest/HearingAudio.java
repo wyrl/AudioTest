@@ -73,26 +73,37 @@ public class HearingAudio extends Thread implements Visualizer.OnDataCaptureList
             default_deviceSampleRate = standard_samplerate;
         sampleRateInHz = default_deviceSampleRate;
 
-        //am.setMode(AudioManager.MODE_IN_CALL);
+        //am.setMode(AudioManager.);
+
         am.setWiredHeadsetOn(true);
         am.setSpeakerphoneOn(false);
+        am.setMode(AudioManager.MODE_NORMAL);
+        //am.setBluetoothScoOn(true);
+        //am.startBluetoothSco();
         Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO);
 
         init();
     }
     private void init(){
-        minBufferSize = AudioRecord.getMinBufferSize(sampleRateInHz, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT);
+        int audio_format_encoding = AudioFormat.ENCODING_PCM_16BIT;
+        int audio_format_channel_in = AudioFormat.CHANNEL_IN_STEREO;
+        int audio_format_channel_out = AudioFormat.CHANNEL_OUT_STEREO;
+
+        //sampleRateInHz = 44100;
+
+        minBufferSize = AudioRecord.getMinBufferSize(sampleRateInHz, AudioFormat.CHANNEL_IN_STEREO, audio_format_encoding);
         recorder = new AudioRecord(
-                MediaRecorder.AudioSource.CAMCORDER,
+                MediaRecorder.AudioSource.MIC,
                 sampleRateInHz,
-                AudioFormat.CHANNEL_IN_MONO,
-                AudioFormat.ENCODING_PCM_16BIT,
+                audio_format_channel_in,
+                audio_format_encoding,
                 minBufferSize);
+
         track = new AudioTrack(
                 AudioManager.STREAM_MUSIC,
                 sampleRateInHz,
-                AudioFormat.CHANNEL_OUT_MONO,
-                AudioFormat.ENCODING_PCM_16BIT,
+                audio_format_channel_out,
+                audio_format_encoding,
                 minBufferSize,
                 AudioTrack.MODE_STREAM);
 

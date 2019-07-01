@@ -32,7 +32,7 @@ public class MainFragment extends Fragment implements View.OnClickListener,
     LineBarVisualizer lineBarVisualizer;
 
     public MainFragment(){
-
+        Config.fragmentPlaying = this;
     }
     public void setContext(Context context){
         this.context = context;
@@ -93,10 +93,10 @@ public class MainFragment extends Fragment implements View.OnClickListener,
     }
     private void onStartPlaying(View v){
         if(btnStartStop.getText().equals("Start")){
-            //startHearing();
+            startHearing();
 
             if(Config.availableDevice.isBluetoothHeadsetConnected() | Config.availableDevice.isUSBHeadsetConnected()) {
-                startHearing();
+                //startHearing();
             }
             else
                 Toast.makeText(context, "Please connect bluetooth headset or USB Audio.", Toast.LENGTH_SHORT).show();
