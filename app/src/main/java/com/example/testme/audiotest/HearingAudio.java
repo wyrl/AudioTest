@@ -7,7 +7,6 @@ import android.media.AudioRecord;
 import android.media.AudioTrack;
 import android.media.MediaRecorder;
 import android.media.audiofx.AcousticEchoCanceler;
-import android.media.audiofx.AudioEffect;
 import android.media.audiofx.Equalizer;
 import android.media.audiofx.LoudnessEnhancer;
 import android.media.audiofx.NoiseSuppressor;
@@ -15,9 +14,10 @@ import android.media.audiofx.Visualizer;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Process;
-import android.support.annotation.RequiresApi;
 import android.util.Log;
 import android.widget.TextView;
+
+import androidx.annotation.RequiresApi;
 
 import com.chibde.BaseVisualizer;
 import com.chibde.visualizer.LineBarVisualizer;

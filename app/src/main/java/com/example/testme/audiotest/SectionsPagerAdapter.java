@@ -1,43 +1,42 @@
 package com.example.testme.audiotest;
 
 
-import android.support.v13.app.FragmentPagerAdapter;
-import android.app.Fragment;
-import android.app.FragmentManager;
-import android.util.Log;
-import android.widget.Toast;
+
+import androidx.annotation.NonNull;
+import androidx.fragment.app.Fragment;
+import androidx.fragment.app.FragmentActivity;
+import androidx.viewpager2.adapter.FragmentStateAdapter;
 
 import java.util.ArrayList;
+import java.util.List;
 
-public class SectionsPagerAdapter extends FragmentPagerAdapter {
-    String [] titles = {
-            "Main",
-            "Equalizer",
-            "Audio Settings"
-    };
-    ArrayList<Fragment> fragments;
+public class SectionsPagerAdapter extends FragmentStateAdapter {
 
-    public SectionsPagerAdapter(FragmentManager fm) {
-        super(fm);
-        fragments = new ArrayList<>();
+    private final List<Fragment> fragmentList = new ArrayList<>();
+    private final List<String> fragmentTitleList = new ArrayList<>();
+
+    // Nagdawat kini og FragmentActivity (nga gi-extend sa AppCompatActivity / MainActivity)
+    public SectionsPagerAdapter(@NonNull FragmentActivity fragmentActivity) {
+        super(fragmentActivity);
     }
-    public void addFragment(Fragment fragment){
-        fragments.add(fragment);
+
+    public void addFragment(Fragment fragment, String title) {
+        fragmentList.add(fragment);
+        fragmentTitleList.add(title);
+    }
+
+    @NonNull
+    @Override
+    public androidx.fragment.app.Fragment createFragment(int position) {
+        return fragmentList.get(position);
     }
 
     @Override
-    public Fragment getItem(int position) {
-        Log.i("SectionsPagerAdapter", "Position: " + String.valueOf(position));
-        return fragments.get(position);
+    public int getItemCount() {
+        return fragmentList.size();
     }
 
-    @Override
-    public int getCount() {
-        return 3;
-    }
-
-    @Override
-    public CharSequence getPageTitle(int position) {
-        return titles[position];
+    public String getPageTitle(int position) {
+        return fragmentTitleList.get(position);
     }
 }

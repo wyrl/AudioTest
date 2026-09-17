@@ -1,11 +1,10 @@
 package com.example.testme.audiotest;
 
-
 import android.Manifest;
-import android.bluetooth.BluetoothA2dp;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothHeadset;
+import android.bluetooth.BluetoothManager;
 import android.bluetooth.BluetoothProfile;
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -16,274 +15,262 @@ import android.hardware.usb.UsbConstants;
 import android.hardware.usb.UsbDevice;
 import android.hardware.usb.UsbManager;
 import android.os.Build;
-import android.support.v4.app.ActivityCompat;
-import android.support.v7.app.AppCompatActivity;
-import android.support.v7.app.ActionBar;
-
-import android.support.v13.app.FragmentPagerAdapter;
-import android.support.v4.view.ViewPager;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
-
-import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.annotation.NonNull;
+import androidx.annotation.RequiresApi;
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.content.ContextCompat;
+import androidx.viewpager2.widget.ViewPager2;
+
+import com.google.android.material.tabs.TabLayout;
+import com.google.android.material.tabs.TabLayoutMediator;
+
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Set;
 
-public class MainActivity extends AppCompatActivity implements ActionBar.TabListener, IAudioAvailableDevice {
+public class MainActivity extends AppCompatActivity implements IAudioAvailableDevice {
 
-    /**
-     * The {@link android.support.v4.view.PagerAdapter} that will provide
-     * fragments for each of the sections. We use a
-     * {@link FragmentPagerAdapter} derivative, which will keep every
-     * loaded fragment in memory. If this becomes too memory intensive, it
-     * may be best to switch to a
-     * {@link android.support.v13.app.FragmentStatePagerAdapter}.
-     */
-    private SectionsPagerAdapter mSectionsPagerAdapter;
+    private ViewPager2 viewPager;
+    private SectionsPagerAdapter sectionsPagerAdapter;
+    private BluetoothDevice device;
 
-    /**
-     * The {@link ViewPager} that will host the section contents.
-     */
-    private ViewPager mViewPager;
+    // Modern Activity Result Launcher for Runtime Permissions
+    private final ActivityResultLauncher<String[]> requestPermissionLauncher =
+            registerForActivityResult(new ActivityResultContracts.RequestMultiplePermissions(), permissions -> {
+                boolean allGranted = true;
+                for (Boolean isGranted : permissions.values()) {
+                    if (!isGranted) {
+                        allGranted = false;
+                        break;
+                    }
+                }
+                if (!allGranted) {
+                    Toast.makeText(this, "Permissions required for audio processing", Toast.LENGTH_SHORT).show();
+                }
+            });
 
-    int PERMISSION_ALL = 1;
-    String[] PERMISSIONS = {Manifest.permission.RECORD_AUDIO};
-
-    BluetoothA2dp bluetoothA2dp;
-    BluetoothDevice device;
-
+    @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR2)
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main2);
-        if(!hasPermissions(this, PERMISSIONS)){
-            ActivityCompat.requestPermissions(this, PERMISSIONS, PERMISSION_ALL);
-        }
-        //getSupportActionBar().setDisplayHomeAsUpEnabled(true);
-        // Create the adapter that will return a fragment for each of the three
-        // primary sections of the activity.
-        mSectionsPagerAdapter = new SectionsPagerAdapter(getFragmentManager());
 
+        checkAndRequestPermissions();
+
+        // ViewPager2 and TabLayout setup (Replaces legacy ViewPager and ActionBar Tabs)
+        viewPager = findViewById(R.id.container);
+        TabLayout tabLayout = findViewById(R.id.tabs);
+
+        sectionsPagerAdapter = new SectionsPagerAdapter(this);
         initMainFragment();
         initEqualizer();
+        sectionsPagerAdapter.addFragment(new AudioSettingsFragment(), "Settings");
 
-        mSectionsPagerAdapter.addFragment(new AudioSettingsFragment());
+        viewPager.setAdapter(sectionsPagerAdapter);
 
-        // Set up the ViewPager with the sections adapter.
-        mViewPager = findViewById(R.id.container);
-        mViewPager.setAdapter(mSectionsPagerAdapter);
-
-        // Set up the action bar.
-        final ActionBar actionBar = getSupportActionBar();
-        actionBar.setNavigationMode(ActionBar.NAVIGATION_MODE_TABS);
-
-        // When swiping between different sections, select the corresponding
-        // tab. We can also use ActionBar.Tab#select() to do this if we have
-        // a reference to the Tab.
-        mViewPager.setOnPageChangeListener(new ViewPager.SimpleOnPageChangeListener() {
-            @Override
-            public void onPageSelected(int position) {
-                actionBar.setSelectedNavigationItem(position);
-            }
-        });
-
-        // For each of the sections in the app, add a tab to the action bar.
-        for (int i = 0; i < mSectionsPagerAdapter.getCount(); i++) {
-            // Create a tab with text corresponding to the page title defined by
-            // the adapter. Also specify this Activity object, which implements
-            // the TabListener interface, as the callback (listener) for when
-            // this tab is selected.
-            actionBar.addTab(
-                    actionBar.newTab()
-                            .setText(mSectionsPagerAdapter.getPageTitle(i))
-                            .setTabListener(this));
-        }
+        new TabLayoutMediator(tabLayout, viewPager,
+                (tab, position) -> tab.setText(sectionsPagerAdapter.getPageTitle(position))
+        ).attach();
 
         Config.availableDevice = this;
 
-        IntentFilter filter = new IntentFilter(BluetoothAdapter.ACTION_CONNECTION_STATE_CHANGED);
-        filter.addAction(BluetoothAdapter.ACTION_STATE_CHANGED);
-        registerReceiver(bluetoothReceiver, filter);
+        // Register Receivers with ContextCompat for Android 14+ receiver safety
+        IntentFilter btFilter = new IntentFilter();
+        btFilter.addAction(BluetoothAdapter.ACTION_CONNECTION_STATE_CHANGED);
+        btFilter.addAction(BluetoothAdapter.ACTION_STATE_CHANGED);
+        btFilter.addAction(BluetoothHeadset.ACTION_CONNECTION_STATE_CHANGED);
+        ContextCompat.registerReceiver(this, bluetoothReceiver, btFilter, ContextCompat.RECEIVER_NOT_EXPORTED);
 
-        filter = new IntentFilter(UsbManager.ACTION_USB_DEVICE_ATTACHED);
-        filter.addAction(UsbManager.ACTION_USB_DEVICE_ATTACHED);
-        registerReceiver(usbReciever, filter);
+        IntentFilter usbFilter = new IntentFilter();
+        usbFilter.addAction(UsbManager.ACTION_USB_DEVICE_ATTACHED);
+        usbFilter.addAction(UsbManager.ACTION_USB_DEVICE_DETACHED);
+        ContextCompat.registerReceiver(this, usbReceiver, usbFilter, ContextCompat.RECEIVER_NOT_EXPORTED);
 
-        filter = new IntentFilter(UsbManager.ACTION_USB_DEVICE_DETACHED);
-        registerReceiver(usbReciever, filter);
+        findTargetBluetoothDevice();
+        startHearingService();
+    }
 
-        // Get the default adapter
-        BluetoothAdapter mBluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
+    private void checkAndRequestPermissions() {
+        List<String> permissionsToRequest = new ArrayList<>();
+        permissionsToRequest.add(Manifest.permission.RECORD_AUDIO);
 
+        // Android 12+ (API 31) Bluetooth Permissions
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            permissionsToRequest.add(Manifest.permission.BLUETOOTH_CONNECT);
+        }
 
-        Set<BluetoothDevice> devices = mBluetoothAdapter.getBondedDevices();
+        // Android 13+ (API 33) Notification Permission for Foreground Service
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            permissionsToRequest.add(Manifest.permission.POST_NOTIFICATIONS);
+        }
+
+        List<String> ungrantedPermissions = new ArrayList<>();
+        for (String perm : permissionsToRequest) {
+            if (ContextCompat.checkSelfPermission(this, perm) != PackageManager.PERMISSION_GRANTED) {
+                ungrantedPermissions.add(perm);
+            }
+        }
+
+        if (!ungrantedPermissions.isEmpty()) {
+            requestPermissionLauncher.launch(ungrantedPermissions.toArray(new String[0]));
+        }
+    }
+
+    private void initMainFragment() {
+        MainFragment mainFragment = new MainFragment();
+        mainFragment.setContext(this);
+        Config.playingAudio = mainFragment;
+        sectionsPagerAdapter.addFragment(mainFragment, "Main");
+    }
+
+    private void initEqualizer() {
+        EqualizerFragment equalizerFragment = new EqualizerFragment();
+        equalizerFragment.setContext(this);
+        Config.playingEqualizer = equalizerFragment;
+        sectionsPagerAdapter.addFragment(equalizerFragment, "Equalizer");
+    }
+
+    @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR2)
+    private void findTargetBluetoothDevice() {
+        BluetoothManager bluetoothManager = (BluetoothManager) getSystemService(Context.BLUETOOTH_SERVICE);
+        BluetoothAdapter bluetoothAdapter = bluetoothManager != null ? bluetoothManager.getAdapter() : null;
+
+        if (bluetoothAdapter == null || !bluetoothAdapter.isEnabled()) return;
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+            return;
+        }
+
+        Set<BluetoothDevice> devices = bluetoothAdapter.getBondedDevices();
         String deviceName = "Rapoo H6020";
         if (devices != null) {
-            for (BluetoothDevice device : devices) {
-                if (deviceName.equals(device.getName())) {
-                    this.device = device;
+            for (BluetoothDevice dev : devices) {
+                if (deviceName.equals(dev.getName())) {
+                    this.device = dev;
                     Toast.makeText(this, deviceName, Toast.LENGTH_SHORT).show();
                     break;
                 }
             }
         }
-        // Establish connection to the proxy.
-        //mBluetoothAdapter.getProfileProxy(this, mProfileListener, BluetoothProfile.A2DP);
+    }
 
+    private void startHearingService() {
         Intent startServiceIntent = new Intent(MainActivity.this, HearingService.class);
-        startService(startServiceIntent);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(startServiceIntent);
+        } else {
+            startService(startServiceIntent);
+        }
+    }
 
+    @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR2)
+    public boolean isBluetoothHeadsetConnected() {
+        BluetoothManager bluetoothManager = (BluetoothManager) getSystemService(Context.BLUETOOTH_SERVICE);
+        BluetoothAdapter bluetoothAdapter = bluetoothManager != null ? bluetoothManager.getAdapter() : null;
+
+        if (bluetoothAdapter == null || !bluetoothAdapter.isEnabled()) return false;
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+            return false;
+        }
+
+        return bluetoothAdapter.getProfileConnectionState(BluetoothProfile.HEADSET) == BluetoothAdapter.STATE_CONNECTED;
     }
-    private void initMainFragment() {
-        MainFragment mainFragment = new MainFragment();
-        mainFragment.setContext(this);
-        Config.playingAudio = mainFragment;
-        mSectionsPagerAdapter.addFragment(mainFragment);
-    }
-    private void initEqualizer(){
-        EqualizerFragment equalizerFragment = new EqualizerFragment();
-        equalizerFragment.setContext(this);
-        Config.playingEqualizer = equalizerFragment;
-        mSectionsPagerAdapter.addFragment(equalizerFragment);
-    }
-    public static boolean hasPermissions(Context context, String... permissions) {
-        if (android.os.Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && context != null && permissions != null) {
-            for (String permission : permissions) {
-                if (ActivityCompat.checkSelfPermission(context, permission) != PackageManager.PERMISSION_GRANTED) {
-                    return false;
+
+    public boolean isUSBHeadsetConnected() {
+        UsbManager usbManager = (UsbManager) this.getSystemService(Context.USB_SERVICE);
+        if (usbManager != null && !usbManager.getDeviceList().isEmpty()) {
+            for (UsbDevice dev : usbManager.getDeviceList().values()) {
+                if (dev.getDeviceClass() == UsbConstants.USB_CLASS_AUDIO) {
+                    return true;
+                } else if (dev.getDeviceClass() == UsbConstants.USB_CLASS_PER_INTERFACE) {
+                    if (dev.getInterfaceCount() > 0 && dev.getInterface(0).getInterfaceClass() == UsbConstants.USB_CLASS_AUDIO) {
+                        return true;
+                    }
                 }
             }
-        }
-        return true;
-    }
-    @Override
-    public boolean onCreateOptionsMenu(Menu menu) {
-        // Inflate the menu; this adds items to the action bar if it is present.
-        getMenuInflater().inflate(R.menu.menu_main2, menu);
-        return true;
-    }
-    @Override
-    public boolean onOptionsItemSelected(MenuItem item) {
-        // Handle action bar item clicks here. The action bar will
-        // automatically handle clicks on the Home/Up button, so long
-        // as you specify a parent activity in AndroidManifest.xml.
-        int id = item.getItemId();
-
-        //noinspection SimplifiableIfStatement
-        if (id == R.id.action_settings) {
-            return true;
-        }
-
-        return super.onOptionsItemSelected(item);
-    }
-    @Override
-    public void onTabSelected(ActionBar.Tab tab, android.support.v4.app.FragmentTransaction ft) {
-        mViewPager.setCurrentItem(tab.getPosition());
-    }
-    @Override
-    public void onTabUnselected(ActionBar.Tab tab, android.support.v4.app.FragmentTransaction ft) {
-
-    }
-    @Override
-    public void onTabReselected(ActionBar.Tab tab, android.support.v4.app.FragmentTransaction ft) {
-
-    }
-    public boolean isBluetoothHeadsetConnected() {
-        BluetoothAdapter mBluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
-        return mBluetoothAdapter != null && mBluetoothAdapter.isEnabled()
-                && mBluetoothAdapter.getProfileConnectionState(BluetoothHeadset.HEADSET) == BluetoothHeadset.STATE_CONNECTED;
-    }
-    public boolean isUSBHeadsetConnected(){
-        UsbManager usbManager = (UsbManager) this.getSystemService(Context.USB_SERVICE);
-        if(usbManager.getDeviceList().size() > 0){
-            UsbDevice device = (UsbDevice) usbManager.getDeviceList().values().toArray()[0];
-            if(device.getDeviceClass() == UsbConstants.USB_CLASS_AUDIO){
-                //Toast.makeText(this, "USB Device is not Audio -- " + nameForClass(device) + ", " + String.valueOf(device.getDeviceClass()), Toast.LENGTH_LONG).show();
-                return true;
-            }
-            else if(device.getDeviceClass() == UsbConstants.USB_CLASS_PER_INTERFACE){
-                return device.getInterface(0).getInterfaceClass() == UsbConstants.USB_CLASS_AUDIO;
-            }
-            else
-                Toast.makeText(this, "USB Device is not Audio", Toast.LENGTH_LONG).show();
         }
         return false;
     }
+
     private final BroadcastReceiver bluetoothReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
-            final String action = intent.getAction();
-            final int connection_state = intent.getIntExtra(BluetoothAdapter.EXTRA_CONNECTION_STATE, BluetoothAdapter.ERROR);
-            final int state = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR);
-            //if(action.equals(BluetoothAdapter.ACTION_STATE_CHANGED))
-            //Toast.makeText(getApplicationContext(), "On Receive -> State: " + String.valueOf(state), Toast.LENGTH_SHORT).show();
-            if(action.equals(BluetoothAdapter.ACTION_CONNECTION_STATE_CHANGED)){
-                switch (connection_state){
-                    case BluetoothAdapter.STATE_CONNECTED:
-                        //isBluetoothAudioConnected = true;
-                        Toast.makeText(getApplicationContext(), "Bluetooth Headset Connected", Toast.LENGTH_SHORT).show();
-
-                        break;
-
-                    case BluetoothAdapter.STATE_DISCONNECTED:
-                        //isBluetoothAudioConnected = false;
-                        Toast.makeText(getApplicationContext(), "Bluetooth Headset Disconnected", Toast.LENGTH_SHORT).show();
-                        if(!isUSBHeadsetConnected())
-                            Config.playingAudio.stop();
-                        break;
+            String action = intent.getAction();
+            Log.i("BluetoothReceiver", "Received action: " + action);
+            if (BluetoothAdapter.ACTION_CONNECTION_STATE_CHANGED.equals(action) || 
+                BluetoothHeadset.ACTION_CONNECTION_STATE_CHANGED.equals(action)) {
+                int state = intent.getIntExtra(BluetoothProfile.EXTRA_STATE, BluetoothProfile.STATE_DISCONNECTED);
+                if (state == BluetoothProfile.STATE_CONNECTED) {
+                    Toast.makeText(getApplicationContext(), "Bluetooth Headset Connected", Toast.LENGTH_SHORT).show();
+                } else if (state == BluetoothProfile.STATE_DISCONNECTED) {
+                    Toast.makeText(getApplicationContext(), "Bluetooth Headset Disconnected", Toast.LENGTH_SHORT).show();
+                    if (!isUSBHeadsetConnected() && Config.fragmentPlaying != null) {
+                        Config.fragmentPlaying.stop();
+                    }
                 }
-            }
-            else if(action.equals(BluetoothAdapter.ACTION_STATE_CHANGED)){
-                switch (state){
-                    case BluetoothAdapter.STATE_OFF:
-                        //isBluetoothAudioConnected = false;
-                        Toast.makeText(getApplicationContext(), "Bluetooth turn off", Toast.LENGTH_SHORT).show();
-                        if(!isUSBHeadsetConnected())
-                            Config.playingAudio.stop();
-                        break;
+            } else if (BluetoothAdapter.ACTION_STATE_CHANGED.equals(action)) {
+                int state = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR);
+                if (state == BluetoothAdapter.STATE_OFF) {
+                    Toast.makeText(getApplicationContext(), "Bluetooth turned off", Toast.LENGTH_SHORT).show();
+                    if (!isUSBHeadsetConnected() && Config.fragmentPlaying != null) {
+                        Config.fragmentPlaying.stop();
+                    }
                 }
             }
         }
     };
-    private BluetoothProfile.ServiceListener mProfileListener = new BluetoothProfile.ServiceListener() {
-        @Override
-        public void onServiceConnected(int i, BluetoothProfile bluetoothProfile) {
-            Log.d("BluetoothService", "a2dp service connected. profile = " + i);
 
-            if(i == BluetoothProfile.A2DP){
-                bluetoothA2dp = (BluetoothA2dp) bluetoothProfile;
-                Toast.makeText(MainActivity.this, "A2dp", Toast.LENGTH_SHORT).show();
-            }
-        }
-
-        @Override
-        public void onServiceDisconnected(int i) {
-
-        }
-    };
-    private final BroadcastReceiver usbReciever = new BroadcastReceiver() {
+    private final BroadcastReceiver usbReceiver = new BroadcastReceiver() {
+        @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR2)
         @Override
         public void onReceive(Context context, Intent intent) {
-            //Toast.makeText(getApplicationContext(), "USB Device Attached", Toast.LENGTH_SHORT).show();
-            if(intent.getAction().equals(UsbManager.ACTION_USB_DEVICE_ATTACHED)){
-                //isUSBAudioConnected = true;
+            String action = intent.getAction();
+            if (UsbManager.ACTION_USB_DEVICE_ATTACHED.equals(action)) {
                 Toast.makeText(getApplicationContext(), "USB Device Attached", Toast.LENGTH_SHORT).show();
-            }
-            else if(intent.getAction().equals(UsbManager.ACTION_USB_DEVICE_DETACHED)){
-                //isUSBAudioConnected = false;
+            } else if (UsbManager.ACTION_USB_DEVICE_DETACHED.equals(action)) {
                 Toast.makeText(getApplicationContext(), "USB Device Detached", Toast.LENGTH_SHORT).show();
-                if(!isBluetoothHeadsetConnected())
-                    Config.playingAudio.stop();
+                if (!isBluetoothHeadsetConnected() && Config.fragmentPlaying != null) {
+                    Config.fragmentPlaying.stop();
+                }
             }
         }
     };
+
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+        getMenuInflater().inflate(R.menu.menu_main2, menu);
+        return true;
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(@NonNull MenuItem item) {
+        if (item.getItemId() == R.id.action_settings) {
+            return true;
+        }
+        return super.onOptionsItemSelected(item);
+    }
+
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        Intent startServiceIntent = new Intent(MainActivity.this, HearingService.class);
-        stopService(startServiceIntent);
+        try {
+            unregisterReceiver(bluetoothReceiver);
+            unregisterReceiver(usbReceiver);
+        } catch (IllegalArgumentException e) {
+            Log.e("MainActivity", "Receiver not registered", e);
+        }
+        Intent stopServiceIntent = new Intent(MainActivity.this, HearingService.class);
+        stopService(stopServiceIntent);
     }
 }

@@ -1,19 +1,20 @@
 apply plugin: 'com.android.library'
-apply from: 'mavenpush.gradle'
+// apply from: 'mavenpush.gradle'
 
 android {
-    compileSdkVersion 23
+    namespace 'com.yalantis.waves'
+    compileSdk 34
 
     defaultConfig {
-        minSdkVersion 14
-        targetSdkVersion 23
+        minSdk 14
+        targetSdk 34
         versionCode 1
         versionName "3.0.3"
     }
     buildTypes {
         release {
             minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
     sourceSets.main {

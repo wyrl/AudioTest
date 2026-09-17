@@ -1,35 +1,21 @@
 package com.example.testme.audiotest;
 
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
 import android.app.Service;
 import android.content.Intent;
+import android.content.pm.ServiceInfo;
+import android.os.Build;
 import android.os.IBinder;
 import android.widget.Toast;
 
 import android.app.KeyguardManager;
-import android.content.pm.PackageManager;
 import android.hardware.fingerprint.FingerprintManager;
-import android.Manifest;
-import android.os.Build;
-import android.os.Bundle;
-import android.security.keystore.KeyGenParameterSpec;
-import android.security.keystore.KeyPermanentlyInvalidatedException;
-import android.security.keystore.KeyProperties;
-import android.support.v7.app.AppCompatActivity;
-import android.support.v4.app.ActivityCompat;
 import android.widget.TextView;
-import java.io.IOException;
-import java.security.InvalidAlgorithmParameterException;
-import java.security.InvalidKeyException;
 import java.security.KeyStore;
-import java.security.KeyStoreException;
-import java.security.NoSuchAlgorithmException;
-import java.security.NoSuchProviderException;
-import java.security.UnrecoverableKeyException;
-import java.security.cert.CertificateException;
 import javax.crypto.Cipher;
 import javax.crypto.KeyGenerator;
-import javax.crypto.NoSuchPaddingException;
-import javax.crypto.SecretKey;
 
 public class HearingService extends Service {
 
@@ -58,7 +44,31 @@ public class HearingService extends Service {
         Toast.makeText(this, "Invoke background service onCreate method.", Toast.LENGTH_LONG).show();
         super.onCreate();
 
+        // Create a foreground notification to satisfy Android 8.0+ / Android 14 requirements
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            String channelId = "hearing_aid_service_channel";
+            NotificationChannel channel = new NotificationChannel(
+                    channelId,
+                    "Hearing Aid Background Processing",
+                    NotificationManager.IMPORTANCE_LOW
+            );
+            NotificationManager manager = getSystemService(NotificationManager.class);
+            if (manager != null) {
+                manager.createNotificationChannel(channel);
+            }
 
+            Notification notification = new Notification.Builder(this, channelId)
+                    .setContentTitle("Hearing Aid Running")
+                    .setContentText("Processing microphone audio amplification stream...")
+                    .setSmallIcon(android.R.drawable.presence_audio_online)
+                    .build();
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                startForeground(101, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE);
+            } else {
+                startForeground(101, notification);
+            }
+        }
     }
 
 

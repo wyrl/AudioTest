@@ -20,9 +20,10 @@ import android.graphics.Color;
 import android.graphics.Paint;
 import android.media.MediaPlayer;
 import android.media.audiofx.Visualizer;
-import android.support.annotation.Nullable;
 import android.util.AttributeSet;
 import android.view.View;
+
+import androidx.annotation.Nullable;
 
 /**
  * Base class that contains common implementation for all
@@ -42,13 +43,13 @@ abstract public class BaseVisualizer extends View {
         init();
     }
 
-    public BaseVisualizer(Context context, @Nullable AttributeSet attrs) {
+    public BaseVisualizer(Context context, @androidx.annotation.Nullable AttributeSet attrs) {
         super(context, attrs);
         init(attrs);
         init();
     }
 
-    public BaseVisualizer(Context context, @Nullable AttributeSet attrs, int defStyleAttr) {
+    public BaseVisualizer(Context context, @androidx.annotation.Nullable AttributeSet attrs, int defStyleAttr) {
         super(context, attrs, defStyleAttr);
         init(attrs);
         init();

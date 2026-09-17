@@ -1,12 +1,10 @@
 package com.example.testme.audiotest;
 
 import android.annotation.TargetApi;
-import android.app.Fragment;
 import android.content.Context;
 import android.graphics.Color;
 import android.os.Build;
 import android.os.Bundle;
-import android.support.annotation.Nullable;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -16,6 +14,9 @@ import android.widget.CompoundButton;
 import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
+
+import androidx.annotation.Nullable;
+import androidx.fragment.app.Fragment;
 
 import com.chibde.visualizer.LineBarVisualizer;
 
@@ -38,7 +39,7 @@ public class MainFragment extends Fragment implements View.OnClickListener,
         this.context = context;
     }
 
-    @TargetApi(Build.VERSION_CODES.KITKAT)
+    @androidx.annotation.RequiresApi(Build.VERSION_CODES.KITKAT)
     @Nullable
     @Override
     public View onCreateView(LayoutInflater inflater, @Nullable ViewGroup container, Bundle savedInstanceState) {
@@ -46,9 +47,9 @@ public class MainFragment extends Fragment implements View.OnClickListener,
 
         lineBarVisualizer = v.findViewById(R.id.visualizer);
 
-        lineBarVisualizer.setColor(Color.GREEN);
+        lineBarVisualizer.setColor(Color.parseColor("#00B0FF"));
 
-        lineBarVisualizer.setDensity(90f);
+        lineBarVisualizer.setDensity(70f);
 
         if(Config.hearingAudio != null && Config.hearingAudio.isStart()) {
             Config.hearingAudio.setLineBarVisualizer(lineBarVisualizer);
@@ -74,9 +75,7 @@ public class MainFragment extends Fragment implements View.OnClickListener,
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                 seekBarLoudness.setProgress((int) Config.hearingAudio.getLoudnessGain(), true);
             } else {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
-                    seekBarLoudness.setProgress((int) Config.hearingAudio.getLoudnessGain());
-                }
+                seekBarLoudness.setProgress((int) Config.hearingAudio.getLoudnessGain());
             }
             btnStartStop.setText(Config.hearingAudio.isStart() ? "Stop" : "Start");
         }
@@ -92,14 +91,12 @@ public class MainFragment extends Fragment implements View.OnClickListener,
             onStartPlaying(v);
     }
     private void onStartPlaying(View v){
-        if(btnStartStop.getText().equals("Start")){
-            startHearing();
-
-            if(Config.availableDevice.isBluetoothHeadsetConnected() | Config.availableDevice.isUSBHeadsetConnected()) {
-                //startHearing();
-            }
-            else
+        if(btnStartStop.getText().toString().equalsIgnoreCase("Start")){
+            if (Config.availableDevice.isBluetoothHeadsetConnected() || Config.availableDevice.isUSBHeadsetConnected()) {
+                startHearing();
+            } else {
                 Toast.makeText(context, "Please connect bluetooth headset or USB Audio.", Toast.LENGTH_SHORT).show();
+            }
         }
         else
         {

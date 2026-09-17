@@ -1,10 +1,9 @@
 package com.example.testme.audiotest;
 
-import android.app.Fragment;
 import android.content.Context;
+import android.graphics.Typeface;
 import android.media.audiofx.Equalizer;
 import android.os.Bundle;
-import android.support.annotation.Nullable;
 import android.util.Log;
 import android.view.Gravity;
 import android.view.LayoutInflater;
@@ -20,6 +19,12 @@ import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.annotation.Nullable;
+import androidx.fragment.app.Fragment;
+
+import com.google.android.material.card.MaterialCardView;
+import com.google.android.material.switchmaterial.SwitchMaterial;
+
 import java.util.ArrayList;
 
 public class EqualizerFragment extends Fragment implements CompoundButton.OnCheckedChangeListener, IPlaying {
@@ -28,7 +33,7 @@ public class EqualizerFragment extends Fragment implements CompoundButton.OnChec
     ViewGroup equalizerLayout;
     LinearLayout equalizerLinearLayout;
     private Context context;
-    Switch swEnable;
+    SwitchMaterial swEnable;
     Spinner spinnerPresets;
     public void setContext(Context context){
         this.context = context;
@@ -84,44 +89,70 @@ public class EqualizerFragment extends Fragment implements CompoundButton.OnChec
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT));
         equalizerLinearLayout.setOrientation(LinearLayout.VERTICAL);
-        for(short i = 0; i < numberFrequencyBands; i++){
+
+        // Convert 12dp to pixels for card item spacing
+        float scale = context.getResources().getDisplayMetrics().density;
+        int paddingPx = (int) (16 * scale + 0.5f);
+        int marginPx = (int) (12 * scale + 0.5f);
+
+        for (short i = 0; i < numberFrequencyBands; i++) {
+            // Material Card Styling Container for each Band
+            MaterialCardView rowCardView =
+                    new MaterialCardView(context);
+            LinearLayout.LayoutParams cardParams = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT);
+            cardParams.setMargins(0, 0, 0, marginPx);
+            rowCardView.setLayoutParams(cardParams);
+            rowCardView.setCardElevation(scale * 2);
+            rowCardView.setRadius(scale * 12);
+            rowCardView.setCardBackgroundColor(context.getResources().getColor(R.color.cardBackground));
 
             LinearLayout linearLayout = new LinearLayout(context);
             linearLayout.setLayoutParams(new ViewGroup.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT));
             linearLayout.setOrientation(LinearLayout.VERTICAL);
+            linearLayout.setPadding(paddingPx, paddingPx, paddingPx, paddingPx);
 
             TextView frequencyHeaderTextView = new TextView(context);
             frequencyHeaderTextView.setLayoutParams(new ViewGroup.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT));
-            frequencyHeaderTextView.setGravity(Gravity.CENTER_HORIZONTAL);
-            frequencyHeaderTextView.setText(String.valueOf(equalizer.getCenterFreq(i) / 1000) + " Khz");
+            frequencyHeaderTextView.setGravity(Gravity.LEFT);
+            frequencyHeaderTextView.setTextSize(15);
+            frequencyHeaderTextView.setTextColor(context.getResources().getColor(R.color.textPrimary));
+            frequencyHeaderTextView.setTypeface(null, Typeface.BOLD);
+            frequencyHeaderTextView.setText(String.valueOf(equalizer.getCenterFreq(i) / 1000) + " kHz");
             linearLayout.addView(frequencyHeaderTextView);
 
             LinearLayout seekBarRowLayout = new LinearLayout(context);
-            seekBarRowLayout.setLayoutParams(new ViewGroup.LayoutParams(
+            LinearLayout.LayoutParams seekRowParams = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT));
+                    ViewGroup.LayoutParams.WRAP_CONTENT);
+            seekRowParams.setMargins(0, (int)(8 * scale), 0, 0);
+            seekBarRowLayout.setLayoutParams(seekRowParams);
             seekBarRowLayout.setOrientation(LinearLayout.HORIZONTAL);
+            seekBarRowLayout.setGravity(Gravity.CENTER_VERTICAL);
 
             TextView minLevelTextView = new TextView(context);
             minLevelTextView.setLayoutParams(new ViewGroup.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT));
-            minLevelTextView.setText(String.valueOf(lowerBandLevel / 100) + " dB" );
+            minLevelTextView.setTextColor(context.getResources().getColor(R.color.textSecondary));
+            minLevelTextView.setText(String.valueOf(lowerBandLevel / 100) + " dB");
 
             TextView maxLevelTextView = new TextView(context);
             maxLevelTextView.setLayoutParams(new ViewGroup.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT));
-            maxLevelTextView.setText(String.valueOf(upperBandLevel / 100) + " dB" );
+            maxLevelTextView.setTextColor(context.getResources().getColor(R.color.textSecondary));
+            maxLevelTextView.setText(String.valueOf(upperBandLevel / 100) + " dB");
 
             SeekBar seekBar = new SeekBar(context);
-
             LinearLayout.LayoutParams layoutParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT);
             layoutParams.weight = 1;
+            layoutParams.setMargins((int)(6 * scale), 0, (int)(6 * scale), 0);
 
             seekBar.setLayoutParams(layoutParams);
             seekBar.setId(i);
@@ -136,14 +167,10 @@ public class EqualizerFragment extends Fragment implements CompoundButton.OnChec
                 }
 
                 @Override
-                public void onStartTrackingTouch(SeekBar seekBar) {
-
-                }
+                public void onStartTrackingTouch(SeekBar seekBar) {}
 
                 @Override
-                public void onStopTrackingTouch(SeekBar seekBar) {
-
-                }
+                public void onStopTrackingTouch(SeekBar seekBar) {}
             });
 
             seekBarRowLayout.addView(minLevelTextView);
@@ -151,7 +178,8 @@ public class EqualizerFragment extends Fragment implements CompoundButton.OnChec
             seekBarRowLayout.addView(maxLevelTextView);
 
             linearLayout.addView(seekBarRowLayout);
-            equalizerLinearLayout.addView(linearLayout);
+            rowCardView.addView(linearLayout);
+            equalizerLinearLayout.addView(rowCardView);
         }
         equalizerLayout.addView(equalizerLinearLayout);
         setPresets(equalizer);
@@ -188,11 +216,12 @@ public class EqualizerFragment extends Fragment implements CompoundButton.OnChec
 
     @Override
     public void start() {
-
     }
 
     @Override
     public void stop() {
-        swEnable.setChecked(false);
+        if (swEnable != null) {
+            swEnable.setChecked(false);
+        }
     }
 }
