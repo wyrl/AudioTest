@@ -157,7 +157,7 @@ public class EqualizerFragment extends Fragment implements CompoundButton.OnChec
             seekBar.setLayoutParams(layoutParams);
             seekBar.setId(i);
             seekBar.setMax(upperBandLevel - lowerBandLevel);
-            seekBar.setProgress(equalizer.getBandLevel(i));
+            seekBar.setProgress(equalizer.getBandLevel(i) - lowerBandLevel);
 
             final short bandIndex = i;
             seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {

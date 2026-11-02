@@ -5,6 +5,7 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
+import android.Manifest;
 import android.bluetooth.BluetoothA2dp;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothHeadset;
@@ -80,6 +81,13 @@ public class HearingService extends Service {
     private synchronized void startAudioProcessing() {
         if (isRunning) return;
 
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
+                != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            Log.w(TAG, "Cannot start audio processing without RECORD_AUDIO permission");
+            updateForegroundNotification(false);
+            return;
+        }
+
         // HEADSET and A2DP can both report CONNECTED; block duplicate start intents immediately.
         isRunning = true;
         stopRequested = false;
@@ -152,8 +160,8 @@ public class HearingService extends Service {
                 != android.content.pm.PackageManager.PERMISSION_GRANTED) {
             return false;
         }
-        return adapter.getProfileConnectionState(BluetoothProfile.HEADSET) == BluetoothProfile.STATE_CONNECTED
-                || adapter.getProfileConnectionState(BluetoothProfile.A2DP) == BluetoothProfile.STATE_CONNECTED;
+        return adapter.getProfileConnectionState(BluetoothProfile.A2DP)
+                == BluetoothProfile.STATE_CONNECTED;
     }
 
     private final BroadcastReceiver bluetoothReceiver = new BroadcastReceiver() {
@@ -170,7 +178,8 @@ public class HearingService extends Service {
             if (BluetoothHeadset.ACTION_CONNECTION_STATE_CHANGED.equals(action)
                     || BluetoothA2dp.ACTION_CONNECTION_STATE_CHANGED.equals(action)) {
                 int state = intent.getIntExtra(BluetoothProfile.EXTRA_STATE, BluetoothProfile.STATE_DISCONNECTED);
-                if (state == BluetoothProfile.STATE_CONNECTED) {
+                if (state == BluetoothProfile.STATE_CONNECTED
+                        && isBluetoothAudioDeviceConnected(HearingService.this)) {
                     startAudioProcessing();
                 } else if (state == BluetoothProfile.STATE_DISCONNECTED) {
                     new Handler(Looper.getMainLooper()).postDelayed(() -> {
@@ -250,6 +259,7 @@ public class HearingService extends Service {
 
     @Override
     public void onDestroy() {
+        stopAudioProcessing();
         if (bluetoothReceiverRegistered) {
             unregisterReceiver(bluetoothReceiver);
             bluetoothReceiverRegistered = false;

@@ -355,7 +355,8 @@ public class HearingAudio extends Thread
         muteOutput();
 
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M ||
-                track == null || stopped) {
+                track == null || stopped || !started ||
+                track.getState() != AudioTrack.STATE_INITIALIZED) {
 
             Log.e(TAG, "Bluetooth routing requires Android 6.0 or newer");
             return;
@@ -424,7 +425,8 @@ public class HearingAudio extends Thread
     private void registerBluetoothListeners() {
 
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M ||
-                audioManager == null || track == null) {
+                audioManager == null || track == null ||
+                deviceCallback != null || routingListener != null) {
             return;
         }
 
@@ -451,13 +453,25 @@ public class HearingAudio extends Thread
                     if (device.getType() ==
                             AudioDeviceInfo.TYPE_BLUETOOTH_A2DP) {
 
-                        Log.w(TAG, "A2DP device disconnected");
+                        if (findA2dpDevice() != null) {
+                            // Another A2DP output is still available; request it
+                            // instead of leaving the track pinned to the removed one.
+                            requestBluetoothRoute();
+                        } else {
+                            Log.w(TAG, "A2DP device disconnected");
 
-                        muteOutput();
+                            muteOutput();
 
-                        audioHandler.removeCallbacks(
-                                routeCheckRunnable
-                        );
+                            audioHandler.removeCallbacks(
+                                    routeCheckRunnable
+                            );
+
+                            try {
+                                track.setPreferredDevice(null);
+                            } catch (Exception e) {
+                                Log.e(TAG, "Unable to clear A2DP route", e);
+                            }
+                        }
 
                         return;
                     }
@@ -548,6 +562,7 @@ public class HearingAudio extends Thread
 
             Log.i(TAG, "Audio processing started");
 
+            audioLoop:
             while (!stopped) {
 
                 int bytesRead = recorder.read(
@@ -558,16 +573,30 @@ public class HearingAudio extends Thread
 
                 if (bytesRead > 0) {
 
-                    int bytesWritten = track.write(
-                            buffer,
-                            0,
-                            bytesRead
-                    );
+                    int offset = 0;
 
-                    if (bytesWritten < 0) {
-                        Log.e(TAG,
-                                "AudioTrack write error: " + bytesWritten);
-                        break;
+                    // AudioTrack.write() may accept only part of a PCM buffer.
+                    // Keep writing the unread tail so samples are never dropped.
+                    while (offset < bytesRead && !stopped) {
+                        int bytesWritten;
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                            bytesWritten = track.write(
+                                    buffer,
+                                    offset,
+                                    bytesRead - offset,
+                                    AudioTrack.WRITE_BLOCKING
+                            );
+                        } else {
+                            bytesWritten = track.write(buffer, offset, bytesRead - offset);
+                        }
+
+                        if (bytesWritten <= 0) {
+                            Log.e(TAG,
+                                    "AudioTrack write error: " + bytesWritten);
+                            break audioLoop;
+                        }
+
+                        offset += bytesWritten;
                     }
 
                 } else if (bytesRead < 0) {
@@ -655,6 +684,14 @@ public class HearingAudio extends Thread
             }
 
             routingListener = null;
+        }
+
+        if (track != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            try {
+                track.setPreferredDevice(null);
+            } catch (Exception e) {
+                Log.e(TAG, "Preferred device cleanup failed", e);
+            }
         }
 
         if (enhancer != null) {

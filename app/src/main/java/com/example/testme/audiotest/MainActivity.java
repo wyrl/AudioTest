@@ -2,8 +2,8 @@ package com.example.testme.audiotest;
 
 import android.Manifest;
 import android.bluetooth.BluetoothAdapter;
+import android.bluetooth.BluetoothA2dp;
 import android.bluetooth.BluetoothDevice;
-import android.bluetooth.BluetoothHeadset;
 import android.bluetooth.BluetoothManager;
 import android.bluetooth.BluetoothProfile;
 import android.content.BroadcastReceiver;
@@ -39,18 +39,16 @@ import java.util.Set;
 public class MainActivity extends AppCompatActivity implements IAudioAvailableDevice {
 
     private SectionsPagerAdapter sectionsPagerAdapter;
+    private boolean startAfterPermissionGrant;
 
     private final ActivityResultLauncher<String[]> requestPermissionLauncher =
             registerForActivityResult(new ActivityResultContracts.RequestMultiplePermissions(), permissions -> {
-                boolean allGranted = true;
-                for (Boolean isGranted : permissions.values()) {
-                    if (!isGranted) {
-                        allGranted = false;
-                        break;
-                    }
-                }
+                boolean allGranted = hasRequiredPermissions();
                 if (!allGranted) {
                     Toast.makeText(this, "Permissions required for audio processing", Toast.LENGTH_SHORT).show();
+                } else if (startAfterPermissionGrant) {
+                    startAfterPermissionGrant = false;
+                    requestHearingServiceStart();
                 }
             });
 
@@ -81,7 +79,7 @@ public class MainActivity extends AppCompatActivity implements IAudioAvailableDe
         IntentFilter btFilter = new IntentFilter();
         btFilter.addAction(BluetoothAdapter.ACTION_CONNECTION_STATE_CHANGED);
         btFilter.addAction(BluetoothAdapter.ACTION_STATE_CHANGED);
-        btFilter.addAction(BluetoothHeadset.ACTION_CONNECTION_STATE_CHANGED);
+        btFilter.addAction(BluetoothA2dp.ACTION_CONNECTION_STATE_CHANGED);
         ContextCompat.registerReceiver(this, bluetoothReceiver, btFilter, ContextCompat.RECEIVER_EXPORTED);
 
         IntentFilter usbFilter = new IntentFilter();
@@ -93,6 +91,12 @@ public class MainActivity extends AppCompatActivity implements IAudioAvailableDe
     }
 
     private void startHearingService() {
+        if (!hasRequiredPermissions()) {
+            startAfterPermissionGrant = true;
+            checkAndRequestPermissions();
+            return;
+        }
+
         Intent serviceIntent = new Intent(this, HearingService.class);
         serviceIntent.setAction(HearingService.ACTION_START);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -100,6 +104,23 @@ public class MainActivity extends AppCompatActivity implements IAudioAvailableDe
         } else {
             startService(serviceIntent);
         }
+    }
+
+    public boolean requestHearingServiceStart() {
+        if (!hasRequiredPermissions()) {
+            startAfterPermissionGrant = true;
+            checkAndRequestPermissions();
+            return false;
+        }
+
+        if (!HearingService.isBluetoothAudioDeviceConnected(this)) {
+            Toast.makeText(this, "Connect an A2DP Bluetooth headset to start hearing.",
+                    Toast.LENGTH_SHORT).show();
+            return false;
+        }
+
+        startHearingService();
+        return true;
     }
 
     private void checkAndRequestPermissions() {
@@ -115,6 +136,16 @@ public class MainActivity extends AppCompatActivity implements IAudioAvailableDe
         if (!ungrantedPermissions.isEmpty()) {
             requestPermissionLauncher.launch(ungrantedPermissions.toArray(new String[0]));
         }
+    }
+
+    private boolean hasRequiredPermissions() {
+        for (String permission : getStrings()) {
+            if (ContextCompat.checkSelfPermission(this, permission)
+                    != PackageManager.PERMISSION_GRANTED) {
+                return false;
+            }
+        }
+        return true;
     }
 
     @NonNull
@@ -205,13 +236,13 @@ public class MainActivity extends AppCompatActivity implements IAudioAvailableDe
         public void onReceive(Context context, Intent intent) {
             String action = intent.getAction();
             Log.i("BluetoothReceiver", "Received action: " + action);
-            if (BluetoothHeadset.ACTION_CONNECTION_STATE_CHANGED.equals(action)) {
+            if (BluetoothA2dp.ACTION_CONNECTION_STATE_CHANGED.equals(action)) {
                 int state = intent.getIntExtra(BluetoothProfile.EXTRA_STATE, BluetoothProfile.STATE_DISCONNECTED);
                 if (state == BluetoothProfile.STATE_CONNECTED) {
-                    Toast.makeText(getApplicationContext(), "Bluetooth Headset Connected", Toast.LENGTH_SHORT).show();
-                    startHearingService();
+                    Toast.makeText(getApplicationContext(), "Bluetooth A2DP connected", Toast.LENGTH_SHORT).show();
+                    requestHearingServiceStart();
                 } else if (state == BluetoothProfile.STATE_DISCONNECTED) {
-                    Toast.makeText(getApplicationContext(), "Bluetooth Headset Disconnected", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(getApplicationContext(), "Bluetooth A2DP disconnected", Toast.LENGTH_SHORT).show();
                 }
             } else if (BluetoothAdapter.ACTION_STATE_CHANGED.equals(action)) {
                 int state = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR);

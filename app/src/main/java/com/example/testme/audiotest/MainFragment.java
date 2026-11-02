@@ -68,15 +68,23 @@ public class MainFragment extends Fragment implements IPlaying {
     }
 
     private void startHearingAidService() {
-        if (getContext() == null || !HearingService.isBluetoothAudioDeviceConnected(getContext())) {
+        if (getActivity() instanceof MainActivity) {
+            if (!((MainActivity) getActivity()).requestHearingServiceStart()) {
+                return;
+            }
+        } else if (getContext() == null ||
+                !HearingService.isBluetoothAudioDeviceConnected(getContext())) {
             if (getContext() != null) {
-                Toast.makeText(getContext(), "Connect your Bluetooth headset to start hearing.", Toast.LENGTH_SHORT).show();
+                Toast.makeText(getContext(), "Connect an A2DP Bluetooth headset to start hearing.",
+                        Toast.LENGTH_SHORT).show();
             }
             return;
         }
+
         isServiceRunning = true;
         btnStartStop.setText("STOP");
-        if (getActivity() != null) {
+
+        if (!(getActivity() instanceof MainActivity) && getActivity() != null) {
             Intent serviceIntent = new Intent(getActivity(), HearingService.class);
             serviceIntent.setAction(HearingService.ACTION_START);
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -85,6 +93,29 @@ public class MainFragment extends Fragment implements IPlaying {
                 getActivity().startService(serviceIntent);
             }
         }
+    }
+
+    /*
+     * The service drives these callbacks after its audio thread has started or
+     * stopped, so the button follows actual service state rather than only taps.
+     */
+    @Override
+    public void start() {
+        isServiceRunning = true;
+        if (btnStartStop != null) btnStartStop.setText("STOP");
+        if (visualizer != null && Config.hearingAudio != null) {
+            Config.hearingAudio.setLineBarVisualizer(visualizer);
+        }
+    }
+
+    @Override
+    public void stop() {
+        isServiceRunning = false;
+        if (btnStartStop != null) btnStartStop.setText("START");
+        if (Config.hearingAudio != null) {
+            Config.hearingAudio.setLineBarVisualizer(null);
+        }
+        if (visualizer != null) visualizer.clearBytes();
     }
 
     private void stopHearingAidService() {
@@ -98,20 +129,6 @@ public class MainFragment extends Fragment implements IPlaying {
         stop();
     }
 
-    @Override
-    public void start() {
-        if (visualizer != null && Config.hearingAudio != null) {
-            Config.hearingAudio.setLineBarVisualizer(visualizer);
-        }
-    }
-
-    @Override
-    public void stop() {
-        if (Config.hearingAudio != null) {
-            Config.hearingAudio.setLineBarVisualizer(null);
-        }
-        if (visualizer != null) visualizer.clearBytes();
-    }
 
     @Override
     public void onDestroyView() {
