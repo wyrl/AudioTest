@@ -12,14 +12,14 @@
         android:orientation="vertical"
         android:padding="20dp">
 
-        <!-- Visualizer Card Container -->
+        <!-- Audio Visualizer Card -->
         <com.google.android.material.card.MaterialCardView
             android:layout_width="match_parent"
-            android:layout_height="260dp"
+            android:layout_height="220dp"
             app:cardCornerRadius="16dp"
             app:cardElevation="4dp"
             app:cardBackgroundColor="@color/visualizerBackground"
-            android:layout_marginBottom="20dp">
+            android:layout_marginBottom="16dp">
 
             <com.chibde.visualizer.LineBarVisualizer
                 android:id="@+id/visualizer"
@@ -28,14 +28,16 @@
                 android:layout_margin="8dp" />
         </com.google.android.material.card.MaterialCardView>
 
-        <!-- Loudness Gain Settings Card -->
+        <!-- Live Subtitles Card Container -->
+
+        <!-- Loudness Gain Card -->
         <com.google.android.material.card.MaterialCardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             app:cardCornerRadius="16dp"
             app:cardElevation="3dp"
             app:cardBackgroundColor="@color/cardBackground"
-            android:layout_marginBottom="30dp">
+            android:layout_marginBottom="20dp">
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -47,8 +49,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="horizontal"
-                    android:gravity="center_vertical"
-                    android:layout_marginBottom="12dp">
+                    android:gravity="center_vertical">
 
                     <CheckBox
                         android:id="@+id/chkLoudness"
@@ -95,7 +96,7 @@
             android:layout_height="0dp"
             android:layout_weight="1" />
 
-        <!-- Modern Full Width Start/Stop Button -->
+        <!-- Main Start/Stop Action Button -->
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnStartStop"
             android:layout_width="match_parent"

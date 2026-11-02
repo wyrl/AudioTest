@@ -38,11 +38,8 @@ import java.util.Set;
 
 public class MainActivity extends AppCompatActivity implements IAudioAvailableDevice {
 
-    private ViewPager2 viewPager;
     private SectionsPagerAdapter sectionsPagerAdapter;
-    private BluetoothDevice device;
 
-    // Modern Activity Result Launcher for Runtime Permissions
     private final ActivityResultLauncher<String[]> requestPermissionLauncher =
             registerForActivityResult(new ActivityResultContracts.RequestMultiplePermissions(), permissions -> {
                 boolean allGranted = true;
@@ -65,8 +62,7 @@ public class MainActivity extends AppCompatActivity implements IAudioAvailableDe
 
         checkAndRequestPermissions();
 
-        // ViewPager2 and TabLayout setup (Replaces legacy ViewPager and ActionBar Tabs)
-        viewPager = findViewById(R.id.container);
+        ViewPager2 viewPager = findViewById(R.id.container);
         TabLayout tabLayout = findViewById(R.id.tabs);
 
         sectionsPagerAdapter = new SectionsPagerAdapter(this);
@@ -82,35 +78,32 @@ public class MainActivity extends AppCompatActivity implements IAudioAvailableDe
 
         Config.availableDevice = this;
 
-        // Register Receivers with ContextCompat for Android 14+ receiver safety
         IntentFilter btFilter = new IntentFilter();
         btFilter.addAction(BluetoothAdapter.ACTION_CONNECTION_STATE_CHANGED);
         btFilter.addAction(BluetoothAdapter.ACTION_STATE_CHANGED);
         btFilter.addAction(BluetoothHeadset.ACTION_CONNECTION_STATE_CHANGED);
-        ContextCompat.registerReceiver(this, bluetoothReceiver, btFilter, ContextCompat.RECEIVER_NOT_EXPORTED);
+        ContextCompat.registerReceiver(this, bluetoothReceiver, btFilter, ContextCompat.RECEIVER_EXPORTED);
 
         IntentFilter usbFilter = new IntentFilter();
         usbFilter.addAction(UsbManager.ACTION_USB_DEVICE_ATTACHED);
         usbFilter.addAction(UsbManager.ACTION_USB_DEVICE_DETACHED);
-        ContextCompat.registerReceiver(this, usbReceiver, usbFilter, ContextCompat.RECEIVER_NOT_EXPORTED);
+        ContextCompat.registerReceiver(this, usbReceiver, usbFilter, ContextCompat.RECEIVER_EXPORTED);
 
         findTargetBluetoothDevice();
-        startHearingService();
+    }
+
+    private void startHearingService() {
+        Intent serviceIntent = new Intent(this, HearingService.class);
+        serviceIntent.setAction(HearingService.ACTION_START);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            ContextCompat.startForegroundService(this, serviceIntent);
+        } else {
+            startService(serviceIntent);
+        }
     }
 
     private void checkAndRequestPermissions() {
-        List<String> permissionsToRequest = new ArrayList<>();
-        permissionsToRequest.add(Manifest.permission.RECORD_AUDIO);
-
-        // Android 12+ (API 31) Bluetooth Permissions
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            permissionsToRequest.add(Manifest.permission.BLUETOOTH_CONNECT);
-        }
-
-        // Android 13+ (API 33) Notification Permission for Foreground Service
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            permissionsToRequest.add(Manifest.permission.POST_NOTIFICATIONS);
-        }
+        List<String> permissionsToRequest = getStrings();
 
         List<String> ungrantedPermissions = new ArrayList<>();
         for (String perm : permissionsToRequest) {
@@ -124,10 +117,24 @@ public class MainActivity extends AppCompatActivity implements IAudioAvailableDe
         }
     }
 
+    @NonNull
+    private static List<String> getStrings() {
+        List<String> permissionsToRequest = new ArrayList<>();
+        permissionsToRequest.add(Manifest.permission.RECORD_AUDIO);
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            permissionsToRequest.add(Manifest.permission.BLUETOOTH_CONNECT);
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            permissionsToRequest.add(Manifest.permission.POST_NOTIFICATIONS);
+        }
+        return permissionsToRequest;
+    }
+
     private void initMainFragment() {
         MainFragment mainFragment = new MainFragment();
-        mainFragment.setContext(this);
-        Config.playingAudio = mainFragment;
+        Config.fragmentPlaying = mainFragment;
         sectionsPagerAdapter.addFragment(mainFragment, "Main");
     }
 
@@ -155,20 +162,10 @@ public class MainActivity extends AppCompatActivity implements IAudioAvailableDe
         if (devices != null) {
             for (BluetoothDevice dev : devices) {
                 if (deviceName.equals(dev.getName())) {
-                    this.device = dev;
                     Toast.makeText(this, deviceName, Toast.LENGTH_SHORT).show();
                     break;
                 }
             }
-        }
-    }
-
-    private void startHearingService() {
-        Intent startServiceIntent = new Intent(MainActivity.this, HearingService.class);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForegroundService(startServiceIntent);
-        } else {
-            startService(startServiceIntent);
         }
     }
 
@@ -208,24 +205,18 @@ public class MainActivity extends AppCompatActivity implements IAudioAvailableDe
         public void onReceive(Context context, Intent intent) {
             String action = intent.getAction();
             Log.i("BluetoothReceiver", "Received action: " + action);
-            if (BluetoothAdapter.ACTION_CONNECTION_STATE_CHANGED.equals(action) || 
-                BluetoothHeadset.ACTION_CONNECTION_STATE_CHANGED.equals(action)) {
+            if (BluetoothHeadset.ACTION_CONNECTION_STATE_CHANGED.equals(action)) {
                 int state = intent.getIntExtra(BluetoothProfile.EXTRA_STATE, BluetoothProfile.STATE_DISCONNECTED);
                 if (state == BluetoothProfile.STATE_CONNECTED) {
                     Toast.makeText(getApplicationContext(), "Bluetooth Headset Connected", Toast.LENGTH_SHORT).show();
+                    startHearingService();
                 } else if (state == BluetoothProfile.STATE_DISCONNECTED) {
                     Toast.makeText(getApplicationContext(), "Bluetooth Headset Disconnected", Toast.LENGTH_SHORT).show();
-                    if (!isUSBHeadsetConnected() && Config.fragmentPlaying != null) {
-                        Config.fragmentPlaying.stop();
-                    }
                 }
             } else if (BluetoothAdapter.ACTION_STATE_CHANGED.equals(action)) {
                 int state = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR);
                 if (state == BluetoothAdapter.STATE_OFF) {
                     Toast.makeText(getApplicationContext(), "Bluetooth turned off", Toast.LENGTH_SHORT).show();
-                    if (!isUSBHeadsetConnected() && Config.fragmentPlaying != null) {
-                        Config.fragmentPlaying.stop();
-                    }
                 }
             }
         }
@@ -240,9 +231,6 @@ public class MainActivity extends AppCompatActivity implements IAudioAvailableDe
                 Toast.makeText(getApplicationContext(), "USB Device Attached", Toast.LENGTH_SHORT).show();
             } else if (UsbManager.ACTION_USB_DEVICE_DETACHED.equals(action)) {
                 Toast.makeText(getApplicationContext(), "USB Device Detached", Toast.LENGTH_SHORT).show();
-                if (!isBluetoothHeadsetConnected() && Config.fragmentPlaying != null) {
-                    Config.fragmentPlaying.stop();
-                }
             }
         }
     };
@@ -270,7 +258,5 @@ public class MainActivity extends AppCompatActivity implements IAudioAvailableDe
         } catch (IllegalArgumentException e) {
             Log.e("MainActivity", "Receiver not registered", e);
         }
-        Intent stopServiceIntent = new Intent(MainActivity.this, HearingService.class);
-        stopService(stopServiceIntent);
     }
 }

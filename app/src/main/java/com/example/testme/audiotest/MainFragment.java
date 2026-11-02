@@ -1,177 +1,123 @@
 package com.example.testme.audiotest;
 
-import android.annotation.TargetApi;
-import android.content.Context;
+import android.content.Intent;
 import android.graphics.Color;
 import android.os.Build;
 import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.Button;
 import android.widget.CheckBox;
-import android.widget.CompoundButton;
 import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
 
 import com.chibde.visualizer.LineBarVisualizer;
+import com.google.android.material.button.MaterialButton;
 
-public class MainFragment extends Fragment implements View.OnClickListener,
-        CompoundButton.OnCheckedChangeListener,
-        SeekBar.OnSeekBarChangeListener,
-        IPlaying {
+public class MainFragment extends Fragment implements IPlaying {
+    private LineBarVisualizer visualizer;
+    private CheckBox chkLoudness;
+    private TextView tvLoudness;
+    private SeekBar seekbarLoudness;
+    private MaterialButton btnStartStop;
+    private boolean isServiceRunning = false;
 
-    private Context context;
-    Button btnStartStop;
-    SeekBar seekBarLoudness;
-    CheckBox checkBoxLoudness;
-    TextView tvLoudness;
-    LineBarVisualizer lineBarVisualizer;
+    public MainFragment() {}
 
-    public MainFragment(){
-        Config.fragmentPlaying = this;
-    }
-    public void setContext(Context context){
-        this.context = context;
-    }
-
-    @androidx.annotation.RequiresApi(Build.VERSION_CODES.KITKAT)
     @Nullable
     @Override
-    public View onCreateView(LayoutInflater inflater, @Nullable ViewGroup container, Bundle savedInstanceState) {
+    public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
         View v = inflater.inflate(R.layout.main_fragment, container, false);
-
-        lineBarVisualizer = v.findViewById(R.id.visualizer);
-
-        lineBarVisualizer.setColor(Color.parseColor("#00B0FF"));
-
-        lineBarVisualizer.setDensity(70f);
-
-        if(Config.hearingAudio != null && Config.hearingAudio.isStart()) {
-            Config.hearingAudio.setLineBarVisualizer(lineBarVisualizer);
-        }
-
-        btnStartStop = v.findViewById(R.id.btnStartStop);
-        btnStartStop.setOnClickListener(this);
-
-        seekBarLoudness = v.findViewById(R.id.seekbarLoudness);
-
-        seekBarLoudness.setOnSeekBarChangeListener(this);
-        checkBoxLoudness = v.findViewById(R.id.chkLoudness);
-        checkBoxLoudness.setOnCheckedChangeListener(this);
-
+        visualizer = v.findViewById(R.id.visualizer);
+        visualizer.setColor(Color.parseColor("#00B0FF"));
+        visualizer.setDensity(70f);
+        chkLoudness = v.findViewById(R.id.chkLoudness);
         tvLoudness = v.findViewById(R.id.tvLoudness);
-
-        //GLSurfaceView gl_surface = (GLSurfaceView) v.findViewById(R.id.gl_surface);
-        //horizon = new Horizon(gl_surface, getResources().getColor(R.color.background), 44100, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT);
-        //horizon.setMaxVolumeDb(120);
-
-        if(Config.hearingAudio != null && Config.hearingAudio.isStart()) {
-            checkBoxLoudness.setChecked(Config.hearingAudio.getLoudnessEnabled());
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                seekBarLoudness.setProgress((int) Config.hearingAudio.getLoudnessGain(), true);
-            } else {
-                seekBarLoudness.setProgress((int) Config.hearingAudio.getLoudnessGain());
-            }
-            btnStartStop.setText(Config.hearingAudio.isStart() ? "Stop" : "Start");
-        }
-        else{
-            enableAll(false);
-        }
+        seekbarLoudness = v.findViewById(R.id.seekbarLoudness);
+        btnStartStop = v.findViewById(R.id.btnStartStop);
+        isServiceRunning = Config.hearingAudio != null && Config.hearingAudio.isStart();
+        btnStartStop.setText(isServiceRunning ? "STOP" : "START");
+        if (isServiceRunning) start();
+        setupLoudnessControls();
+        btnStartStop.setOnClickListener(view -> {
+            if (isServiceRunning) stopHearingAidService();
+            else startHearingAidService();
+        });
         return v;
     }
 
-    @Override
-    public void onClick(View v) {
-        if(v.getId() == R.id.btnStartStop)
-            onStartPlaying(v);
+    private void setupLoudnessControls() {
+        chkLoudness.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            seekbarLoudness.setVisibility(isChecked ? View.VISIBLE : View.GONE);
+            if (Config.hearingAudio != null) Config.hearingAudio.setLoudnessEnable(isChecked);
+        });
+        seekbarLoudness.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                tvLoudness.setText(String.valueOf(progress));
+                if (fromUser && Config.hearingAudio != null) Config.hearingAudio.setLoudnessGain(progress);
+            }
+            @Override public void onStartTrackingTouch(SeekBar seekBar) {}
+            @Override public void onStopTrackingTouch(SeekBar seekBar) {}
+        });
     }
-    private void onStartPlaying(View v){
-        if(btnStartStop.getText().toString().equalsIgnoreCase("Start")){
-            if (Config.availableDevice.isBluetoothHeadsetConnected() || Config.availableDevice.isUSBHeadsetConnected()) {
-                startHearing();
+
+    private void startHearingAidService() {
+        if (getContext() == null || !HearingService.isBluetoothAudioDeviceConnected(getContext())) {
+            if (getContext() != null) {
+                Toast.makeText(getContext(), "Connect your Bluetooth headset to start hearing.", Toast.LENGTH_SHORT).show();
+            }
+            return;
+        }
+        isServiceRunning = true;
+        btnStartStop.setText("STOP");
+        if (getActivity() != null) {
+            Intent serviceIntent = new Intent(getActivity(), HearingService.class);
+            serviceIntent.setAction(HearingService.ACTION_START);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                getActivity().startForegroundService(serviceIntent);
             } else {
-                Toast.makeText(context, "Please connect bluetooth headset or USB Audio.", Toast.LENGTH_SHORT).show();
+                getActivity().startService(serviceIntent);
             }
         }
-        else
-        {
-            stopHearing();
+    }
+
+    private void stopHearingAidService() {
+        isServiceRunning = false;
+        btnStartStop.setText("START");
+        if (getActivity() != null) {
+            Intent serviceIntent = new Intent(getActivity(), HearingService.class);
+            serviceIntent.setAction(HearingService.ACTION_STOP);
+            getActivity().startService(serviceIntent);
         }
-    }
-    private void startHearing(){
-        btnStartStop.setText("Stop");
-        if (Config.hearingAudio == null || !Config.hearingAudio.isStart()) {
-            Config.hearingAudio = new HearingAudio(context);
-        }
-        Config.hearingAudio.setLineBarVisualizer(lineBarVisualizer);
-        Config.hearingAudio.start();
-        enableAll(true);
-    }
-
-
-
-    private void stopHearing(){
-        btnStartStop.setText("Start");
-        if(Config.playingEqualizer != null)
-            Config.playingEqualizer.stop();
-        if(Config.hearingAudio != null){
-            Config.hearingAudio.close();
-            Config.hearingAudio = null;
-            checkBoxLoudness.setChecked(false);
-            enableAll(false);
-            seekBarLoudness.setProgress(0);
-        }
-    }
-    private void enableAll(boolean enabled) {
-        checkBoxLoudness.setEnabled(enabled);
-        seekBarLoudness.setEnabled(enabled);
-    }
-
-    @Override
-    public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-        if(Config.hearingAudio != null){
-            if(buttonView.getId() == R.id.chkLoudness){
-                seekBarLoudness.setVisibility(isChecked ? View.VISIBLE : View.GONE);
-                Config.hearingAudio.setLoudnessEnable(isChecked);
-            }
-            /*else if(buttonView.getId() == R.id.chkNoise){
-                audio.setNoiseSuppressor(isChecked);
-            }
-            else if(buttonView.getId() == R.id.chkEchoCanceler){
-                audio.setAcousticEchoCanceler(isChecked);
-            }*/
-        }
-    }
-
-    @Override
-    public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-        tvLoudness.setText(String.valueOf(progress));
-        if(Config.hearingAudio != null)
-            Config.hearingAudio.setLoudnessGain(progress);
-    }
-
-    @Override
-    public void onStartTrackingTouch(SeekBar seekBar) {
-
-    }
-
-    @Override
-    public void onStopTrackingTouch(SeekBar seekBar) {
-
+        stop();
     }
 
     @Override
     public void start() {
-        startHearing();
+        if (visualizer != null && Config.hearingAudio != null) {
+            Config.hearingAudio.setLineBarVisualizer(visualizer);
+        }
     }
 
     @Override
     public void stop() {
-        stopHearing();
+        if (Config.hearingAudio != null) {
+            Config.hearingAudio.setLineBarVisualizer(null);
+        }
+        if (visualizer != null) visualizer.clearBytes();
     }
+
+    @Override
+    public void onDestroyView() {
+        stop();
+        if (Config.fragmentPlaying == this) Config.fragmentPlaying = null;
+        super.onDestroyView();
+    }
+
 }

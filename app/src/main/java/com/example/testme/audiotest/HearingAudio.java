@@ -1,6 +1,9 @@
 package com.example.testme.audiotest;
 
+import android.Manifest;
 import android.content.Context;
+import android.content.pm.PackageManager;
+import android.media.AudioAttributes;
 import android.media.AudioFormat;
 import android.media.AudioManager;
 import android.media.AudioRecord;
@@ -12,228 +15,287 @@ import android.media.audiofx.LoudnessEnhancer;
 import android.media.audiofx.NoiseSuppressor;
 import android.media.audiofx.Visualizer;
 import android.os.Build;
-import android.os.Handler;
 import android.os.Process;
 import android.util.Log;
-import android.widget.TextView;
 
 import androidx.annotation.RequiresApi;
+import androidx.core.app.ActivityCompat;
 
-import com.chibde.BaseVisualizer;
 import com.chibde.visualizer.LineBarVisualizer;
 
-
-/**
- * Created by testme on 4/5/2017.
- */
 public class HearingAudio extends Thread implements Visualizer.OnDataCaptureListener {
-    private boolean stopped = false;
-    private boolean started = false;
+    private static final String TAG = "HearingAudio";
+
+    private volatile boolean stopped = false;
+    private volatile boolean started = false;
+
     private int minBufferSize;
-    private final int standard_samplerate = 44100;
-    private int default_deviceSampleRate;
     private int sampleRateInHz;
-    AudioRecord recorder = null;
-    AudioTrack track = null;
-    private int channel_in = AudioFormat.CHANNEL_IN_DEFAULT;
-    private int channel_out = AudioFormat.CHANNEL_OUT_DEFAULT;
-    public final int CHANNEL_DEFAULT = 0;
-    public final int CHANNEL_MONO = 1;
-    public final int CHANNEL_STEREO = 2;
 
-    LoudnessEnhancer enhancer;
-    NoiseSuppressor noiseSuppressor;
-    AcousticEchoCanceler acousticEchoCanceler;
+    private AudioRecord recorder = null;
+    private AudioTrack track = null;
 
-    public final int SAMPLE_RATE_STANDARD = 0;
-    public final int SAMPLE_RATE_MEDIUM = 1;
-    public final int SAMPLE_RATE_HIGH = 2;
-    public final int SAMPLE_RATE_BEST = 3;
-
-    private int [] sampleRateInHzArr = {
-            44100,
-            48000,
-            88200,
-            96000,
-            192000
-    };
-    private LineBarVisualizer linebarVisualizer;
-    private Visualizer visualizer;
+    private LoudnessEnhancer enhancer;
+    private NoiseSuppressor noiseSuppressor;
+    private AcousticEchoCanceler acousticEchoCanceler;
     private Equalizer equalizer;
+    private Visualizer visualizer;
 
-    public HearingAudio(Context context)
-    {
+    private LineBarVisualizer linebarVisualizer;
+    private final Context context;
+
+    @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR1)
+    public HearingAudio(Context context) {
+        this.context = context;
+
         AudioManager am = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
-        String sampleRateStr = "0";
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.JELLY_BEAN_MR1) {
-            sampleRateStr = am.getProperty(AudioManager.PROPERTY_OUTPUT_SAMPLE_RATE);
+        int defaultSampleRate = 44100;
+
+        if (am != null) {
+            String sampleRateStr = am.getProperty(AudioManager.PROPERTY_OUTPUT_SAMPLE_RATE);
+            if (sampleRateStr != null) {
+                try {
+                    defaultSampleRate = Integer.parseInt(sampleRateStr);
+                } catch (NumberFormatException e) {
+                    Log.e(TAG, "Failed to parse sample rate", e);
+                }
+            }
+            am.setMode(AudioManager.MODE_NORMAL);
         }
-        default_deviceSampleRate = Integer.parseInt(sampleRateStr);
-        if (default_deviceSampleRate == 0)
-            default_deviceSampleRate = standard_samplerate;
-        sampleRateInHz = default_deviceSampleRate;
-
-        //am.setMode(AudioManager.);
-
-        am.setWiredHeadsetOn(true);
-        am.setSpeakerphoneOn(false);
-        am.setMode(AudioManager.MODE_NORMAL);
-        //am.setBluetoothScoOn(true);
-        //am.startBluetoothSco();
-        Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO);
+        this.sampleRateInHz = defaultSampleRate;
 
         init();
     }
-    private void init(){
-        int audio_format_encoding = AudioFormat.ENCODING_PCM_16BIT;
-        int audio_format_channel_in = AudioFormat.CHANNEL_IN_STEREO;
-        int audio_format_channel_out = AudioFormat.CHANNEL_OUT_STEREO;
 
-        //sampleRateInHz = 44100;
+    @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN)
+    private void init() {
+        int encoding = AudioFormat.ENCODING_PCM_16BIT;
+        int channelIn = AudioFormat.CHANNEL_IN_STEREO;
+        int channelOut = AudioFormat.CHANNEL_OUT_STEREO;
 
-        minBufferSize = AudioRecord.getMinBufferSize(sampleRateInHz, AudioFormat.CHANNEL_IN_STEREO, audio_format_encoding);
+        minBufferSize = AudioRecord.getMinBufferSize(sampleRateInHz, channelIn, encoding);
+        if (minBufferSize == AudioRecord.ERROR || minBufferSize == AudioRecord.ERROR_BAD_VALUE) {
+            minBufferSize = sampleRateInHz * 2;
+        }
+
+        if (ActivityCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            Log.e(TAG, "RECORD_AUDIO permission not granted");
+            return;
+        }
+
         recorder = new AudioRecord(
                 MediaRecorder.AudioSource.MIC,
                 sampleRateInHz,
-                audio_format_channel_in,
-                audio_format_encoding,
-                minBufferSize);
+                channelIn,
+                encoding,
+                minBufferSize
+        );
 
-        track = new AudioTrack(
-                AudioManager.STREAM_MUSIC,
-                sampleRateInHz,
-                audio_format_channel_out,
-                audio_format_encoding,
-                minBufferSize,
-                AudioTrack.MODE_STREAM);
+        // Modern AudioTrack Initialization using AudioAttributes and AudioFormat
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            track = new AudioTrack.Builder()
+                    .setAudioAttributes(new AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_MEDIA)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                            .build())
+                    .setAudioFormat(new AudioFormat.Builder()
+                            .setEncoding(encoding)
+                            .setSampleRate(sampleRateInHz)
+                            .setChannelMask(channelOut)
+                            .build())
+                    .setBufferSizeInBytes(minBufferSize)
+                    .setTransferMode(AudioTrack.MODE_STREAM)
+                    .build();
+        } else {
+            track = new AudioTrack(
+                    AudioManager.STREAM_MUSIC,
+                    sampleRateInHz,
+                    channelOut,
+                    encoding,
+                    minBufferSize,
+                    AudioTrack.MODE_STREAM
+            );
+        }
+
+        setupAudioEffects();
+    }
+
+
+
+    @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN)
+    private void setupAudioEffects() {
+        int trackSessionId = track.getAudioSessionId();
+        int recordSessionId = recorder.getAudioSessionId();
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
-            enhancer = new LoudnessEnhancer(track.getAudioSessionId());
-            enhancer.setEnabled(false);
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN) {
-            noiseSuppressor = NoiseSuppressor.create(recorder.getAudioSessionId());
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN) {
-            acousticEchoCanceler = AcousticEchoCanceler.create(recorder.getAudioSessionId());
+            try {
+                enhancer = new LoudnessEnhancer(trackSessionId);
+                enhancer.setEnabled(false);
+            } catch (Exception e) {
+                Log.e(TAG, "LoudnessEnhancer init failed", e);
+            }
         }
 
-        equalizer = new Equalizer(0, track.getAudioSessionId());
-
-        visualizer = new Visualizer(track.getAudioSessionId());
-        visualizer.setDataCaptureListener(this, Visualizer.getMaxCaptureRate() / 2, true, false);
-        visualizer.setEnabled(true);
-
-        track.setPlaybackRate(sampleRateInHz);
-    }
-    public void setSampleRateMask(int mask){
-        sampleRateInHz = sampleRateInHzArr[mask];
-    }
-    public void setChannel(int channel){
-        switch (channel){
-            case CHANNEL_DEFAULT:
-                channel_in = AudioFormat.CHANNEL_IN_DEFAULT;
-                channel_out = AudioFormat.CHANNEL_OUT_DEFAULT;
-                break;
-            case CHANNEL_MONO:
-                channel_in = AudioFormat.CHANNEL_IN_MONO;
-                channel_out = AudioFormat.CHANNEL_OUT_MONO;
-                break;
-            case CHANNEL_STEREO:
-                channel_in = AudioFormat.CHANNEL_IN_STEREO;
-                channel_out = AudioFormat.CHANNEL_OUT_STEREO;
+        if (NoiseSuppressor.isAvailable()) {
+            try {
+                noiseSuppressor = NoiseSuppressor.create(recordSessionId);
+            } catch (Exception e) {
+                Log.e(TAG, "NoiseSuppressor init failed", e);
+            }
         }
-    }
-    public void setLoudnessGain(int gain){
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
-            enhancer.setTargetGain(gain);
+
+        if (AcousticEchoCanceler.isAvailable()) {
+            try {
+                acousticEchoCanceler = AcousticEchoCanceler.create(recordSessionId);
+            } catch (Exception e) {
+                Log.e(TAG, "AcousticEchoCanceler init failed", e);
+            }
         }
-    }
-    @RequiresApi(api = Build.VERSION_CODES.KITKAT)
-    public float getLoudnessGain(){
-        return enhancer.getTargetGain();
-    }
-    public void setLoudnessEnable(boolean enable){
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
-            enhancer.setEnabled(enable);
+
+        try {
+            equalizer = new Equalizer(0, trackSessionId);
+        } catch (Exception e) {
+            Log.e(TAG, "Equalizer init failed", e);
         }
-    }
-    public boolean getLoudnessEnabled(){
-        return enhancer.getEnabled();
-    }
 
-    public void setLineBarVisualizer(LineBarVisualizer lineBarVisualizer){
-        this.linebarVisualizer = lineBarVisualizer;
-    }
-
-
-    public void setNoiseSuppressor(boolean enable){
-        noiseSuppressor.setEnabled(enable);
-    }
-    public void setAcousticEchoCanceler(boolean enable){
-        acousticEchoCanceler.setEnabled(enable);
-    }
-
-    public Equalizer getEqualizer(){
-        return equalizer;
+        try {
+            visualizer = new Visualizer(trackSessionId);
+            visualizer.setDataCaptureListener(this, Visualizer.getMaxCaptureRate() / 2, true, false);
+            visualizer.setEnabled(true);
+        } catch (Exception e) {
+            Log.e(TAG, "Visualizer init failed", e);
+        }
     }
 
     @Override
     public void run() {
-        Log.i("HearingAudio", "Running HearingAudio Thread");
-        byte [] buffer = new byte[minBufferSize];
+        Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO);
+        Log.i(TAG, "Running HearingAudio Thread");
+
+        if (recorder == null || track == null || recorder.getState() != AudioRecord.STATE_INITIALIZED) {
+            Log.e(TAG, "AudioRecord or AudioTrack not properly initialized");
+            return;
+        }
+
+        byte[] buffer = new byte[minBufferSize];
         recorder.startRecording();
         track.play();
         started = true;
-        try
-        {
-            int N = 0;
-            while(!stopped){
-                N = recorder.read(buffer, 0, minBufferSize);
-                track.write(buffer, 0, N);
+
+        try {
+            while (!stopped) {
+                int bytesRead = recorder.read(buffer, 0, minBufferSize);
+                if (bytesRead > 0) {
+                    track.write(buffer, 0, bytesRead);
+                }
             }
+        } catch (Exception e) {
+            Log.e(TAG, "Error in audio loop", e);
+        } finally {
+            releaseResources();
         }
-        catch (Throwable x)
-        {
-            Log.e("AudioError", "Error reading voice audio", x);
-        }
-        finally {
-            enhancer.setEnabled(false);
-            if(noiseSuppressor != null)
-                noiseSuppressor.setEnabled(false);
-            recorder.stop();
-            recorder.release();
-            track.stop();
-            track.release();
-            equalizer.release();
-            visualizer.release();
-        }
-    }
-    public int getMinBufferSize()
-    {
-        return minBufferSize;
-    }
-    public float getMaxVolume()
-    {
-        return track.getMaxVolume();
     }
 
-    public boolean isStart(){
+    private void releaseResources() {
+        started = false;
+        try {
+            if (enhancer != null) {
+                enhancer.setEnabled(false);
+                enhancer.release();
+            }
+            if (noiseSuppressor != null) {
+                noiseSuppressor.setEnabled(false);
+                noiseSuppressor.release();
+            }
+            if (acousticEchoCanceler != null) {
+                acousticEchoCanceler.setEnabled(false);
+                acousticEchoCanceler.release();
+            }
+            if (equalizer != null) {
+                equalizer.release();
+            }
+            if (visualizer != null) {
+                visualizer.setEnabled(false);
+                visualizer.release();
+            }
+            if (recorder != null) {
+                if (recorder.getRecordingState() == AudioRecord.RECORDSTATE_RECORDING) {
+                    recorder.stop();
+                }
+                recorder.release();
+            }
+            if (track != null) {
+                if (track.getPlayState() == AudioTrack.PLAYSTATE_PLAYING) {
+                    track.stop();
+                }
+                track.release();
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error releasing audio resources", e);
+        }
+    }
+
+    public void setLoudnessGain(int gain) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT && enhancer != null) {
+            enhancer.setTargetGain(gain);
+        }
+    }
+
+    @RequiresApi(api = Build.VERSION_CODES.KITKAT)
+    public float getLoudnessGain() {
+        return (enhancer != null) ? enhancer.getTargetGain() : 0;
+    }
+
+    public void setLoudnessEnable(boolean enable) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT && enhancer != null) {
+            enhancer.setEnabled(enable);
+        }
+    }
+
+    public boolean getLoudnessEnabled() {
+        return enhancer != null && enhancer.getEnabled();
+    }
+
+    public void setNoiseSuppressor(boolean enable) {
+        if (noiseSuppressor != null) {
+            noiseSuppressor.setEnabled(enable);
+        }
+    }
+
+    public void setAcousticEchoCanceler(boolean enable) {
+        if (acousticEchoCanceler != null) {
+            acousticEchoCanceler.setEnabled(enable);
+        }
+    }
+
+    public Equalizer getEqualizer() {
+        return equalizer;
+    }
+
+    public void setLineBarVisualizer(LineBarVisualizer lineBarVisualizer) {
+        this.linebarVisualizer = lineBarVisualizer;
+    }
+
+    public boolean isStart() {
         return started;
     }
 
-    public void close(){
+    public void close() {
         stopped = true;
     }
 
     @Override
     public void onWaveFormDataCapture(Visualizer visualizer, byte[] waveform, int samplingRate) {
-        if(linebarVisualizer != null)
+        if (linebarVisualizer != null) {
             linebarVisualizer.setDraw(waveform);
+        }
     }
 
     @Override
     public void onFftDataCapture(Visualizer visualizer, byte[] fft, int samplingRate) {
+    }
 
+    public int getAudioSessionId() {
+        return recorder.getAudioSessionId();
     }
 }
